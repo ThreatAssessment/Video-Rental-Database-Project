@@ -1,0 +1,86 @@
+CREATE TABLE detailed(
+	rental_id INT PRIMARY KEY,
+	staff_id INT,
+	first_name VARCHAR(40),
+	last_name VARCHAR(40),
+	email VARCHAR(100),
+	store_id INT,
+	rental_date TIMESTAMP
+);
+
+CREATE TABLE summary(
+	staff_id INT PRIMARY KEY,
+	full_name VARCHAR(80),
+	total_rentals INT
+);
+
+INSERT INTO detailed(rental_id, staff_id, first_name, last_name, email, store_id, rental_date)
+SELECT r.rental_id, s.staff_id, s.first_name, s.last_name, s.email, s.store_id, r.rental_date
+FROM rental AS r
+INNER JOIN staff AS s ON s.staff_id = r.staff_id;
+
+INSERT INTO summary(
+SELECT staff_id,
+	CONCAT(first_name, ‘ ‘, last_name) AS full_name,
+	COUNT(staff_id)
+FROM detailed
+GROUP BY staff_id, full_name
+HAVING COUNT(staff_id) > 1
+ORDER BY COUNT(staff_id) DESC
+LIMIT 10
+);
+
+CREATE FUNCTION refresh_summary_function()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+
+DELETE FROM summary;
+
+INSERT INTO summary(
+SELECT staff_id,
+	CONCAT(first_name, ‘ ‘, last_name) AS full_name,
+	COUNT(staff_id)
+FROM detailed
+GROUP BY staff_id, full_name
+HAVING COUNT(staff_id) > 1
+ORDER BY COUNT(staff_id) DESC
+LIMIT 10
+);
+
+RETURN NEW;
+END; $$
+
+CREATE TRIGGER refresh_summary_table
+AFTER INSERT ON detailed
+FOR EACH STATEMENT
+EXECUTE PROCEDURE refresh_summary_function();
+
+CREATE PROCEDURE refresh()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+
+DELETE FROM detailed;
+
+INSERT INTO detailed(rental_id, staff_id, first_name, last_name, email, store_id, rental_date)
+SELECT r.rental_id, s.staff_id, s.first_name, s.last_name, s.email, s.store_id, r.rental_date
+FROM rental AS r
+INNER JOIN staff AS s ON s.staff_id = r.staff_id;
+
+DELETE FROM summary;
+
+INSERT INTO summary(
+SELECT staff_id,
+	CONCAT(first_name, ‘ ‘, last_name) AS full_name,
+	COUNT(staff_id)
+FROM detailed
+GROUP BY staff_id, full_name
+HAVING COUNT(staff_id) > 1
+ORDER BY COUNT(staff_id) DESC
+LIMIT 10
+);
+
+END; $$
+
